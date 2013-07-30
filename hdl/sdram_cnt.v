@@ -1,9 +1,11 @@
+`include "../hdl/sdram_defs.v"
+
 module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_out, Dq_in, Dq_oe, Addr, Ba, Cke, Cs_n, Ras_n, Cas_n, We_n, Dqm);
 
   parameter addr_bits =      11;
   parameter data_bits =      32;
-  parameter col_bits  =       8;
-  parameter mem_sizes =  524287;
+  parameter t_cl      =       3; /* cycles */
+  parameter t_rfc     =       7; /* cycles */
 
   // Global signals
   input wire clk;
@@ -12,9 +14,9 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
   // Internal interface
   input wire                   en;
   input wire                   we;
-  input wire [11:0]            addr_in;
+  input wire [addr_bits    :0] addr_in;
   input wire [data_bits - 1:0] data_in;
-  output reg                   rdy;
+  output wire                  rdy;
   output reg [data_bits - 1:0] data_out;
   output reg                   valid;
 
@@ -29,68 +31,30 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
 
   // Control signals
   output reg       Cke;
-  output reg       Cs_n;
-  output reg       Ras_n;
-  output reg       Cas_n;
-  output reg       We_n;
+  output wire      Cs_n;
+  output wire      Ras_n;
+  output wire      Cas_n;
+  output wire      We_n;
   output reg [3:0] Dqm;
 
   integer i;
 
-  // mode[2:0]
-  `define BURST_1           3'b000
-  `define BURST_2           3'b001
-  `define BURST_4           3'b010
-  `define BURST_8           3'b011
+  reg [3:0]  state, next_state;
+  reg [13:0] ref_cnt;
+  reg [3:0]  clk_cnt;
 
-  // mode[3]
-  `define BURST_FULL        3'b111
-  `define BURST_SEQUENTIAL  1'b0
-  `define BURST_INTERLEAVED 1'b1
+  wire dly_full = (ref_cnt == `DLY_FULL);
 
-  // mode[6:4]
-  `define CAS_1             3'b001
-  `define CAS_2             3'b010
-  `define CAS_3             3'b011
+  reg [3:0] cmd;
+  reg [2:0] init_step;
+  assign {Cs_n, Ras_n, Cas_n, We_n} = cmd;
 
-  // mode[8:7]
-  `define OPMODE_STD        2'b00
+  wire ref_dly  = (ref_cnt == `REF_REQ);
+  wire ref_full = (ref_cnt == `REF_FULL);
 
-  // mode[9]
-  `define WR_BURST_PROG     1'b0
-  `define WR_BURST_SINGLE   1'b1
+  reg ref_req, ref_err, idle;
 
-  reg [3:0] state, next_state;
-
-  `define STATE_S0        0
-  `define STATE_WAIT      1
-  `define STATE_INIT      2
-  `define STATE_PRECHARGE 3
-  `define STATE_REFRESH   4
-  `define STATE_LMR       5
-  `define STATE_IDLE      6
-  `define STATE_ACTIVATE  7
-  `define STATE_WRITE     8
-  `define STATE_READ      9
-
-  reg [13:0] clk_cnt;
-
-  `define CLK_FULL (100000/10)
-  wire clk_full = (clk_cnt == `CLK_FULL);
-
-  wire [3:0] command = {Cs_n, Ras_n, Cas_n, We_n};
-
-  //CS# RAS# CAS# WE#
-  `define COM_INHIBIT   4'b1111
-  `define COM_NOP       4'b0111
-  `define COM_PRECHARGE 4'b0010
-  `define COM_REFRESH   4'b0001
-  `define COM_LMR       4'b0000
-  `define COM_ACTIVATE  4'b0011
-  `define COM_WRITE     4'b0100
-  `define COM_READ      4'b0101
-
-  reg [2:0] cmd_cnt;
+  assign rdy = (idle & !ref_req & !ref_dly);
 
   always @(posedge clk)
   begin
@@ -101,51 +65,48 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
       // Bidir signals
       for(i = 0; i < data_bits; i = i + 1)
       begin
-        Dq_out[i] <= 1'b0;
         Dq_oe[i] <= 1'b0;
-      end
-
-      // Address signals
-      for(i = 0; i < addr_bits; i = i + 1)
-      begin
-        Addr[i] <= 1'b0;
       end
 
       Ba <= 2'd0;
 
       // Control signals
       Cke <= 1'b0;
-      {Cs_n, Ras_n, Cas_n, We_n} <= `COM_INHIBIT;
-      Dqm <= 4'hf;
+      cmd <= `COM_INHIBIT;
+      Dqm <= 4'b1111;
     end // if(rst)
     else
     begin
       // Default assignments
-      rdy <= 1'b0;
+      idle <= 1'b0;
       valid <= 1'b0;
       state <= state;
       next_state <= next_state;
+
+      // Always increment counters
+      ref_cnt <= ref_cnt + 1;
       clk_cnt <= clk_cnt + 1;
 
       // Bidir signals
-      for(i = 0; i < data_bits; i = i + 1)
-      begin
-        Dq_out[i] <= Dq_out[i];
-        Dq_oe[i] <= Dq_oe[i];
-      end
+      Dq_out <= Dq_out;
+      Dq_oe <= Dq_oe;
 
       // Address signals
-      for(i = 0; i < addr_bits; i = i + 1)
-      begin
-        Addr[i] <= Addr[i];
-      end
-
+      Addr <= Addr;
       Ba <= Ba;
 
       // Control signals
       Cke <= Cke;
-      {Cs_n, Ras_n, Cas_n, We_n} <= `COM_NOP;
+      cmd <= `COM_NOP;
       Dqm <= Dqm;
+
+      ref_req <= ref_req;
+      ref_err <= ref_err;
+
+      if(ref_dly)
+        ref_req <= 1'b1;
+      else if(ref_full)
+        ref_err <= 1'b1;
 
       case(state)
         `STATE_S0:
@@ -154,27 +115,27 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
           begin
             state <= `STATE_WAIT;
             Cke <= 1'b0;
-            clk_cnt <= 14'd0;
+            ref_cnt <= 14'd0; // Misuse refresh counter
           end
         end
 
         `STATE_WAIT:
         begin
-          if(clk_full)
+          if(dly_full)
           begin
             state <= `STATE_INIT;
-            clk_cnt <= 14'd0;
+            clk_cnt <= 4'd0;
             Cke <= 1'b1;
-            cmd_cnt <= 3'd0;
+            init_step <= 3'd0;
           end
         end
 
        `STATE_INIT:
         begin
-          clk_cnt <= 14'd0;
-          cmd_cnt <= cmd_cnt + 1;
+          clk_cnt <= 4'd0;
+          init_step <= init_step + 1;
 
-          case(cmd_cnt)
+          case(init_step)
             3'd0:
             begin
               state <= `STATE_PRECHARGE;
@@ -195,6 +156,7 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
 
             3'd3:
             begin
+              ref_err <= 1'b0; // There is no error yet
               state <= `STATE_LMR;
               next_state <= `STATE_IDLE;
             end
@@ -206,11 +168,11 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
           Addr[10] <= 1'b1; // Precharge all
 
           case(clk_cnt)
-            14'd0:
-              {Cs_n, Ras_n, Cas_n, We_n} <= `COM_PRECHARGE;
-            14'd1:
+            4'd0:
+              cmd <= `COM_PRECHARGE;
+            4'd1:
             begin
-              clk_cnt <= 14'd0;
+              clk_cnt <= 4'd0;
               state <= next_state;
             end
           endcase
@@ -219,12 +181,14 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
         `STATE_REFRESH:
         begin
           case(clk_cnt)
-            14'd0:
+            4'd0:
             begin
-              {Cs_n, Ras_n, Cas_n, We_n} <= `COM_REFRESH;
+              cmd <= `COM_REFRESH;
               Ba <= 2'b11;
+              ref_req <= 1'b0;
+              ref_cnt <= 14'd0;
             end
-            14'd6:
+            t_rfc:
               state <= next_state;
           endcase
         end
@@ -232,25 +196,30 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
         `STATE_LMR:
         begin
           case(clk_cnt)
-            14'd0:
+            4'd0:
             begin
-              {Cs_n, Ras_n, Cas_n, We_n} <= `COM_LMR;
+              cmd <= `COM_LMR;
               Ba <= 2'd0;
               Addr <= {2'd0, `WR_BURST_PROG, `OPMODE_STD, `CAS_3, `BURST_SEQUENTIAL, `BURST_1};
             end
-            14'd1:
+            4'd1:
               state <= next_state;
           endcase
         end
 
         `STATE_IDLE:
         begin
-          rdy <= 1'b1;
+          idle <= 1'b1;
 
-          if(en)
+          if(ref_req)
           begin
-            rdy <= 1'b0;
-            clk_cnt <= 14'd0;
+            state <= `STATE_REFRESH;
+            next_state <= `STATE_IDLE;
+          end
+          else if(en)
+          begin
+            idle <= 1'b0;
+            clk_cnt <= 4'd0;
             Addr[10] <= 1'b0; // Disable Autoprecharge
 
             {Ba, Addr[9:0]} <= addr_in;
@@ -270,11 +239,11 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
         `STATE_ACTIVATE:
         begin
           case(clk_cnt)
-            14'd0:
-              {Cs_n, Ras_n, Cas_n, We_n} <= `COM_ACTIVATE;
-            14'd1:
+            4'd0:
+              cmd <= `COM_ACTIVATE;
+            4'd1:
             begin
-              clk_cnt <= 14'd0;
+              clk_cnt <= 4'd0;
               state <= next_state;
             end
           endcase
@@ -283,14 +252,15 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
         `STATE_WRITE:
         begin
           case(clk_cnt)
-            14'd0:
+            4'd0:
             begin
               Dq_oe <= 32'hffffffff;
-              {Cs_n, Ras_n, Cas_n, We_n} <= `COM_WRITE;
+              cmd <= `COM_WRITE;
             end
-            14'd3:
+
+            t_cl:
             begin
-              clk_cnt <= 14'd0;
+              clk_cnt <= 4'd0;
               state <= `STATE_PRECHARGE;
               next_state <= `STATE_IDLE;
             end
@@ -300,18 +270,18 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
         `STATE_READ:
         begin
           case(clk_cnt)
-            14'd0:
+            4'd0:
             begin
               Dq_oe <= 32'd0;
-              {Cs_n, Ras_n, Cas_n, We_n} <= `COM_READ;
+              cmd <= `COM_READ;
             end
 
-            14'd3:
+            t_cl:
             begin
               data_out <= Dq_in;
               valid <= 1'b1;
 
-              clk_cnt <= 14'd0;
+              clk_cnt <= 4'd0;
               state <= `STATE_PRECHARGE;
               next_state <= `STATE_IDLE;
             end
