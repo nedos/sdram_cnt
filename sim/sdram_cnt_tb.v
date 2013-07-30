@@ -235,36 +235,6 @@ endtask
 
 
 
-
-// Task for reading via UART
-// task tb_read;
-// 
-// input [7:0] data;
-// 
-// begin
-//   tb_timeout_cnt <= 24'd0; // Reset watchdog
-// 
-//   wait(rx_valid || tb_timeout);
-// 
-//   if(tb_timeout)
-//   begin
-//     $display("READ Timeout");
-//     $stop;
-//   end
-//   else
-//   begin
-//     if(rx_data != data)
-//     begin
-//       $display("WRITE failed: Expected 0x%02H, Got 0x%02H", data, rx_data);
-//       $stop;
-//     end
-//   end
-// end
-// 
-// endtask
-
-
-
 always @(posedge tb_rst)
 begin
   tb_data <= 32'd0;
@@ -277,6 +247,8 @@ reg [11:0] addr1;
 reg [11:0] addr2;
 reg [31:0] write1;
 reg [31:0] write2;
+
+integer dly;
 
 initial
 begin
@@ -292,15 +264,29 @@ begin
     addr2 = ({$random} % 12'hFFF);
     write1 = ({$random} % 32'hFFFFFFFF);
     write2 = ({$random} % 32'hFFFFFFFF);
+
+    dly = {$random} % 10;
+    repeat(dly) @(posedge tb_clk);
     tb_write(addr1,write1);
+
+    dly = {$random} % 10;
+    repeat(dly) @(posedge tb_clk);
     tb_write(addr2,write2);
+
+    dly = {$random} % 10;
+    repeat(dly) @(posedge tb_clk);
     tb_read(addr1,result);
+
     if(result != write1)
     begin
       $display("WRITE failed: Expected 0x%08H, Got 0x%08H", write1, result);
       $stop;
     end
+
+    dly = {$random} % 10;
+    repeat(dly) @(posedge tb_clk);
     tb_read(addr2,result);
+
     if(result != write2)
     begin
       $display("WRITE failed: Expected 0x%08H, Got 0x%08H", write1, result);
