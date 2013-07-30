@@ -12,7 +12,7 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
   // Internal interface
   input wire                   en;
   input wire                   we;
-  input wire [12:0]            addr_in;
+  input wire [11:0]            addr_in;
   input wire [data_bits - 1:0] data_in;
   output reg                   rdy;
   output reg [data_bits - 1:0] data_out;
@@ -251,8 +251,9 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
           begin
             rdy <= 1'b0;
             clk_cnt <= 14'd0;
+            Addr[10] <= 1'b0; // Disable Autoprecharge
 
-            {Ba, Addr[10:0]} <= addr_in;
+            {Ba, Addr[9:0]} <= addr_in;
 
             Dqm <= 4'd0;
             Dq_out <= data_in;
@@ -271,7 +272,7 @@ module sdram_cnt (clk, rst, en, we, addr_in, data_out, rdy, data_in, valid, Dq_o
           case(clk_cnt)
             14'd0:
               {Cs_n, Ras_n, Cas_n, We_n} <= `COM_ACTIVATE;
-            14'd10:
+            14'd1:
             begin
               clk_cnt <= 14'd0;
               state <= next_state;

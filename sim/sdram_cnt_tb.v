@@ -31,7 +31,7 @@ reg tb_rst;
 reg tb_en;
 reg tb_dl_clk;
 
-reg [12:0] tb_addr;
+reg [11:0] tb_addr;
 reg [31:0] tb_data;
 reg        tb_we;
 
@@ -40,6 +40,8 @@ wire valid;
 wire [31:0] data_out;
 
 wire [31:0] Dq_out;
+wire [31:0] Dq_oe;
+wire [31:0] Dq_in;
 wire [10:0] Addr;
 wire [1:0]  Ba;
 wire        Cke;
@@ -48,6 +50,8 @@ wire        Ras_n;
 wire        Cas_n;
 wire        We_n;
 wire [3:0]  Dqm;
+
+wire [31:0] Dq;
 
 sdram_cnt cnti (
   .clk(tb_clk),
@@ -60,8 +64,8 @@ sdram_cnt cnti (
   .data_out(data_out),
   .valid(valid),
   .Dq_out(Dq_out),
-  //.Dq_in,
-  //.Dq_oe,
+  .Dq_oe(Dq_oe),
+  .Dq_in(Dq),
   .Addr(Addr),
   .Ba(Ba),
   .Cke(Cke),
@@ -72,7 +76,7 @@ sdram_cnt cnti (
   .Dqm(Dqm));
 
 mt48lc2m32b2 sdrami (
-  .Dq(Dq_out),
+  .Dq(Dq),
   .Addr(Addr),
   .Ba(Ba),
   .Clk(~tb_clk),
@@ -82,6 +86,39 @@ mt48lc2m32b2 sdrami (
   .Cas_n(Cas_n),
   .We_n(We_n),
   .Dqm(Dqm));
+
+assign Dq[0] = Dq_oe[0] ? Dq_out[0] : 1'bz;
+assign Dq[1] = Dq_oe[1] ? Dq_out[1] : 1'bz;
+assign Dq[2] = Dq_oe[2] ? Dq_out[2] : 1'bz;
+assign Dq[3] = Dq_oe[3] ? Dq_out[3] : 1'bz;
+assign Dq[4] = Dq_oe[4] ? Dq_out[4] : 1'bz;
+assign Dq[5] = Dq_oe[5] ? Dq_out[5] : 1'bz;
+assign Dq[6] = Dq_oe[6] ? Dq_out[6] : 1'bz;
+assign Dq[7] = Dq_oe[7] ? Dq_out[7] : 1'bz;
+assign Dq[8] = Dq_oe[8] ? Dq_out[8] : 1'bz;
+assign Dq[9] = Dq_oe[9] ? Dq_out[9] : 1'bz;
+assign Dq[10] = Dq_oe[10] ? Dq_out[10] : 1'bz;
+assign Dq[11] = Dq_oe[11] ? Dq_out[11] : 1'bz;
+assign Dq[12] = Dq_oe[12] ? Dq_out[12] : 1'bz;
+assign Dq[13] = Dq_oe[13] ? Dq_out[13] : 1'bz;
+assign Dq[14] = Dq_oe[14] ? Dq_out[14] : 1'bz;
+assign Dq[15] = Dq_oe[15] ? Dq_out[15] : 1'bz;
+assign Dq[16] = Dq_oe[16] ? Dq_out[16] : 1'bz;
+assign Dq[17] = Dq_oe[17] ? Dq_out[17] : 1'bz;
+assign Dq[18] = Dq_oe[18] ? Dq_out[18] : 1'bz;
+assign Dq[19] = Dq_oe[19] ? Dq_out[19] : 1'bz;
+assign Dq[20] = Dq_oe[20] ? Dq_out[20] : 1'bz;
+assign Dq[21] = Dq_oe[21] ? Dq_out[21] : 1'bz;
+assign Dq[22] = Dq_oe[22] ? Dq_out[22] : 1'bz;
+assign Dq[23] = Dq_oe[23] ? Dq_out[23] : 1'bz;
+assign Dq[24] = Dq_oe[24] ? Dq_out[24] : 1'bz;
+assign Dq[25] = Dq_oe[25] ? Dq_out[25] : 1'bz;
+assign Dq[26] = Dq_oe[26] ? Dq_out[26] : 1'bz;
+assign Dq[27] = Dq_oe[27] ? Dq_out[27] : 1'bz;
+assign Dq[28] = Dq_oe[28] ? Dq_out[28] : 1'bz;
+assign Dq[29] = Dq_oe[29] ? Dq_out[29] : 1'bz;
+assign Dq[30] = Dq_oe[30] ? Dq_out[30] : 1'bz;
+assign Dq[31] = Dq_oe[31] ? Dq_out[31] : 1'bz;
 
 initial
 begin
@@ -120,7 +157,7 @@ end
 
 // Task for writing data
 task tb_write;
-input [12:0] addr;
+input [11:0] addr;
 input [31:0] data;
 
 begin
@@ -162,7 +199,7 @@ endtask
 
 // Task for reading data
 task tb_read;
-input [12:0] addr;
+input [11:0] addr;
 output [31:0] data;
 
 begin
@@ -231,10 +268,15 @@ endtask
 always @(posedge tb_rst)
 begin
   tb_data <= 32'd0;
-  tb_addr <= 11'd0;
+  tb_addr <= 12'd0;
 end
 
 reg [31:0] result;
+
+reg [11:0] addr1;
+reg [11:0] addr2;
+reg [31:0] write1;
+reg [31:0] write2;
 
 initial
 begin
@@ -243,19 +285,28 @@ begin
   tb_en <= 1'b0;
 
   wait(rdy);
-  tb_write(13'd0,32'hFFFFFFFF);
-  tb_write(13'd1,32'h55555555);
-  tb_write({2'b11,11'd1},32'hAAAAAAAA);
-  tb_read(13'd0, result);
-  tb_read(13'd1, result);
-  tb_read({2'b11,11'd1},result);
-  //repeat(256)
-  //begin
-  //  del = ({$random} % 100);
-  //  value = ({$random} % 256);
-  //  $display ("Delay = %d, Value = 0x%2X", del, value);
-  //  #(del) tb_write(value);
-  //end
+
+  repeat(256)
+  begin
+    addr1 = ({$random} % 12'hFFF);
+    addr2 = ({$random} % 12'hFFF);
+    write1 = ({$random} % 32'hFFFFFFFF);
+    write2 = ({$random} % 32'hFFFFFFFF);
+    tb_write(addr1,write1);
+    tb_write(addr2,write2);
+    tb_read(addr1,result);
+    if(result != write1)
+    begin
+      $display("WRITE failed: Expected 0x%08H, Got 0x%08H", write1, result);
+      $stop;
+    end
+    tb_read(addr2,result);
+    if(result != write2)
+    begin
+      $display("WRITE failed: Expected 0x%08H, Got 0x%08H", write1, result);
+      $stop;
+    end
+  end
 
   $display("Testbench completed successfully!");
   $stop;

@@ -354,7 +354,6 @@ module mt48lc2m32b2 (Dq, Addr, Ba, Clk, Cke, Cs_n, Ras_n, Cas_n, We_n, Dqm);
             if ((Ba === 2'b00 && Act_b0 === 1'b1) || (Ba === 2'b01 && Act_b1 === 1'b1) ||
                 (Ba === 2'b10 && Act_b2 === 1'b1) || (Ba === 2'b11 && Act_b3 === 1'b1)) begin
                 $display ("%m : at time %t ERROR: Bank 0b%02b already activated -- data can be corrupted", $time, Ba);
-                $stop;
             end
 
             // Activate Bank 0
